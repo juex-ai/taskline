@@ -16,7 +16,7 @@ description: |
   project queue" and proactively drain runnable tasks to completion.
   Skip for one-off todo notes with no state, dependencies, or follow-up
   — just answer those directly.
-version: 0.18.3
+version: 0.18.4
 ---
 
 # taskline — task management for AI agents
@@ -481,25 +481,30 @@ task description or implementation notes, then continue.
      merge checks without any further review wait. If reviews or comments do
      exist, apply this finding policy:
 
-     - A P0/P1 finding requires a fix or reasoned rebuttal, followed by
-       resolving its review thread.
-     - An unprioritized finding, whether human or automated, also requires a
-       fix or reasoned rebuttal; never ignore it merely because it lacks a `P`
-       label.
-     - P2/P3 findings do not require a code change or reply. Resolve any inline
-       thread directly so the server's zero-unresolved-thread `done` gate can
-       pass.
+     - Treat the initial PR review and the reviews after the first two fix
+       commits as the three full-attention rounds. Handle every actionable
+       P0/P1/P2/P3 finding in those rounds with a fix or reasoned rebuttal and
+       resolve its thread.
+     - Starting with the review after fix commit 3, handle only P0/P1. Do not
+       change code, provide a substantive reply, or resolve a thread for P2/P3.
+     - If a finding has no priority, classify it as P0, P1, P2, or P3 before
+       applying the round rule. Mark the GitHub thread with a short first-line
+       reply such as `Priority: P2` and record the decision in the local
+       `Review Report`. Status notifications and comments with no actionable
+       finding do not need classification.
+     - P0/P1 always require a fix or reasoned rebuttal, followed by resolving
+       the review thread.
 
      Ordinary review fixes should stay in `review`: edit the local stage docs,
-     run the relevant tests, push, wait for the new head's CI, and refresh the
-     comment surfaces again. Only a material change to product scope,
-     architecture, or the chosen solution should return the task to `dev` for
-     renewed design and implementation work.
+     batch the round into one fix commit, run the relevant tests, push, wait for
+     the new head's CI, and refresh the comment surfaces again. Only a material
+     change to product scope, architecture, or the chosen solution should
+     return the task to `dev` for renewed design and implementation work.
   3. Merge only after the latest head's required CI succeeds, its aggregate
      check rollup satisfies the server-compatible rule above, the current
-     comment surfaces have been inspected, and every blocking finding is
-     handled. Pin the inspected head so a concurrent push aborts instead of
-     merging unchecked work:
+     comment surfaces have been inspected, and every finding that blocks under
+     the current review-fix policy is handled. Pin the inspected head so a
+     concurrent push aborts instead of merging unchecked work:
 
      ```bash
      gh pr merge <n> --squash --delete-branch --match-head-commit <recorded-head-oid>
@@ -517,10 +522,11 @@ task description or implementation notes, then continue.
 - **Advance:** `taskline task update <id> --state done` *only after*
   (a) the latest head's required CI is green or N/A, (b) the aggregate
   check-rollup state is `SUCCESS` or absent, (c) the current comment surfaces
-  have been inspected, (d) every blocking finding is fixed or rebutted and
-  every review thread is resolved, and (e) the inspected head is confirmed
-  merged. A posted review is not required. The server queries GitHub and rejects
-  `done` when merge, review-thread, or CI evidence is incomplete.
+  have been inspected, (d) every finding that blocks under the current round
+  policy is fixed or rebutted and every P0/P1 review thread is resolved, and
+  (e) the inspected head is confirmed merged. A posted review is not required.
+  The server queries GitHub and rejects `done` when merge, unresolved P0/P1, or
+  CI evidence is incomplete.
 - **Drop back to dev** with `taskline task update <id> --state dev` only when
   review changes product scope, architecture, or the chosen solution
   materially. Keep ordinary defect fixes in `review`; do not delete and
@@ -574,8 +580,8 @@ substitutes for delivery evidence.
 - **`cannot enter review`** — create and push the branch, open a real GitHub
   PR, attach it with the exact `taskline task link ...` command shown in the
   error, then retry the state update.
-- **`cannot enter done`** — follow the listed blocker: resolve every review
-  thread, finish required CI for the latest PR head, confirm its aggregate
+- **`cannot enter done`** — follow the listed blocker: resolve every P0/P1
+  review thread, finish required CI for the latest PR head, confirm its aggregate
   check-rollup state is `SUCCESS` or absent, inspect the current comment
   surfaces, merge the PR, update task docs/links, then retry. Do not use
   `--force`; it cannot bypass delivery evidence.
@@ -585,9 +591,13 @@ substitutes for delivery evidence.
 - **A push lands during review** — all CI and review evidence for the previous
   head is stale. Wait for the new head's CI, then refresh the review and comment
   surfaces again.
-- **Only P2/P3 inline findings remain** — no code change or reply is required,
-  but resolve those threads before `done` because the server gate requires zero
-  unresolved review threads.
+- **An unprioritized finding appears** — classify it as P0/P1/P2/P3, add a
+  first-line `Priority: Pn` reply to the GitHub thread, and record the decision
+  in the Review Report before applying the current review-round policy.
+- **P2/P3 appears on or after fix commit 3** — do not change code, provide a
+  substantive reply, or resolve the thread. The server `done` gate ignores
+  unresolved P2/P3. Before fix commit 3, P2/P3 belongs to the three
+  full-attention review rounds and must be handled.
 - **`state entry verification unavailable`** — GitHub could not be queried.
   Configure `TASKLINE_GITHUB_TOKEN`/`GITHUB_TOKEN`/`GH_TOKEN` for the server or
   run `gh auth login` on the server host, then retry.

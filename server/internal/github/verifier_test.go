@@ -36,7 +36,11 @@ func TestVerifierReadsPullRequestEvidenceAndPaginatesReviewThreads(t *testing.T)
                     "state": "MERGED",
                     "merged": true,
                     "reviewThreads": {
-                        "nodes": [{"isResolved": false}, {"isResolved": true}],
+                        "nodes": [
+                            {"isResolved": false, "comments": {"totalCount": 1, "nodes": [{"body": "[P2] optional cleanup"}]}},
+                            {"isResolved": true, "comments": {"totalCount": 1, "nodes": [{"body": "[P0] already resolved"}]}},
+                            {"isResolved": true, "comments": {"totalCount": 1, "nodes": [{"body": "resolved without classification"}]}}
+                        ],
                         "pageInfo": {"hasNextPage": true, "endCursor": "cursor-1"}
                     },
                     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]}
@@ -51,7 +55,10 @@ func TestVerifierReadsPullRequestEvidenceAndPaginatesReviewThreads(t *testing.T)
                 "state": "MERGED",
                 "merged": true,
                 "reviewThreads": {
-                    "nodes": [{"isResolved": false}],
+                    "nodes": [
+                        {"isResolved": false, "comments": {"totalCount": 1, "nodes": [{"body": "[P1] fix correctness"}]}},
+                        {"isResolved": false, "comments": {"totalCount": 1, "nodes": [{"body": "needs classification"}]}}
+                    ],
                     "pageInfo": {"hasNextPage": false, "endCursor": null}
                 },
                 "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]}
@@ -76,9 +83,41 @@ func TestVerifierReadsPullRequestEvidenceAndPaginatesReviewThreads(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, service.PullRequestMerged, status.State)
 	require.True(t, status.Merged)
-	require.Equal(t, 2, status.UnresolvedReviewThreads)
+	require.Equal(t, 1, status.UnresolvedP0P1ReviewThreads)
 	require.Equal(t, service.CheckRollupSuccess, status.CheckRollupState)
 	require.Equal(t, 2, requests)
+}
+
+func TestVerifierFindsP0P1AcrossReviewThreadComments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+            "data": {"repository": {"pullRequest": {
+                "state": "MERGED",
+                "merged": true,
+                "reviewThreads": {
+                    "nodes": [
+                        {"isResolved": false, "comments": {"totalCount": 2, "nodes": [{"body": "[P2] initial"}, {"body": "Priority: P1"}]}},
+                        {"isResolved": false, "comments": {"totalCount": 2, "nodes": [{"body": "discussion mentions P0 later but is not a marker"}, {"body": "Priority: P3"}]}}
+                    ],
+                    "pageInfo": {"hasNextPage": false, "endCursor": null}
+                },
+                "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]}
+            }}}}
+        }`))
+	}))
+	t.Cleanup(server.Close)
+
+	verifier := githubapi.NewVerifier(
+		githubapi.WithEndpoint(server.URL),
+		githubapi.WithHTTPClient(server.Client()),
+		githubapi.WithTokenSource(githubapi.TokenSourceFunc(func(context.Context) (string, error) {
+			return "test-token", nil
+		})),
+	)
+	status, err := verifier.VerifyPullRequest(context.Background(), service.PullRequestRef{URL: "https://github.com/o/r/pull/9", Owner: "o", Repository: "r", Number: 9})
+	require.NoError(t, err)
+	require.Equal(t, 1, status.UnresolvedP0P1ReviewThreads)
 }
 
 func TestVerifierReturnsNotFoundForMissingPullRequest(t *testing.T) {

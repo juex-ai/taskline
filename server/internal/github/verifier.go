@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,8 @@ import (
 
 const defaultGraphQLEndpoint = "https://api.github.com/graphql"
 
+var blockingPriorityLinePattern = regexp.MustCompile(`(?i)^(?:\*\*)?(?:[-*]\s+)?(?:\[\s*P[01]\s*\]|priority\s*:\s*P?[01]\b|P[01]\s*:)`)
+
 const pullRequestQuery = `
 query TasklinePullRequestEvidence($owner: String!, $name: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
@@ -28,7 +31,12 @@ query TasklinePullRequestEvidence($owner: String!, $name: String!, $number: Int!
       state
       merged
       reviewThreads(first: 100, after: $after) {
-        nodes { isResolved }
+        nodes {
+          isResolved
+          comments(first: 100) {
+            nodes { body }
+          }
+        }
         pageInfo { hasNextPage endCursor }
       }
       commits(last: 1) {
@@ -126,8 +134,11 @@ func (v *Verifier) VerifyPullRequest(ctx context.Context, ref service.PullReques
 		status.State = strings.ToUpper(pr.State)
 		status.Merged = pr.Merged
 		for _, thread := range pr.ReviewThreads.Nodes {
-			if !thread.IsResolved {
-				status.UnresolvedReviewThreads++
+			if thread.IsResolved {
+				continue
+			}
+			if hasBlockingPriority(thread.Comments.Nodes) {
+				status.UnresolvedP0P1ReviewThreads++
 			}
 		}
 		if len(pr.Commits.Nodes) > 0 && pr.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
@@ -153,6 +164,11 @@ type graphQLResponse struct {
 				ReviewThreads struct {
 					Nodes []struct {
 						IsResolved bool `json:"isResolved"`
+						Comments   struct {
+							Nodes []struct {
+								Body string `json:"body"`
+							} `json:"nodes"`
+						} `json:"comments"`
 					} `json:"nodes"`
 					PageInfo struct {
 						HasNextPage bool    `json:"hasNextPage"`
@@ -174,6 +190,27 @@ type graphQLResponse struct {
 	Errors []struct {
 		Message string `json:"message"`
 	} `json:"errors"`
+}
+
+func hasBlockingPriority(comments []struct {
+	Body string `json:"body"`
+}) bool {
+	for _, comment := range comments {
+		line := firstNonEmptyLine(comment.Body)
+		if blockingPriorityLinePattern.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstNonEmptyLine(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func (v *Verifier) query(ctx context.Context, token string, ref service.PullRequestRef, after *string) (*graphQLResponse, error) {

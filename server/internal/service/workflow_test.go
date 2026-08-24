@@ -97,9 +97,9 @@ func TestDoneEntryRequiresMergedResolvedGreenPullRequest(t *testing.T) {
 			wantReason: "has not been merged",
 		},
 		{
-			name:       "unresolved comments",
-			status:     service.PullRequestStatus{State: service.PullRequestMerged, Merged: true, UnresolvedReviewThreads: 2, CheckRollupState: service.CheckRollupSuccess},
-			wantReason: "2 unresolved review threads",
+			name:       "unresolved P0 or P1 comments",
+			status:     service.PullRequestStatus{State: service.PullRequestMerged, Merged: true, UnresolvedP0P1ReviewThreads: 2, CheckRollupState: service.CheckRollupSuccess},
+			wantReason: "2 unresolved P0/P1 review threads",
 		},
 		{
 			name:       "ci pending",
@@ -125,7 +125,7 @@ func TestDoneEntryRequiresMergedResolvedGreenPullRequest(t *testing.T) {
 			_, err := s.UpdateTask(ctx, task.ID, store.TaskUpdate{State: &done, Force: true})
 			require.ErrorIs(t, err, service.ErrStateEntryBlocked)
 			require.Contains(t, err.Error(), tt.wantReason)
-			require.Contains(t, err.Error(), "resolve review comments, wait for CI, merge the PR, then retry")
+			require.Contains(t, err.Error(), "resolve P0/P1 review comments, wait for CI, merge the PR, then retry")
 		})
 	}
 }
@@ -160,6 +160,23 @@ func TestDoneEntryAcceptsMergedResolvedPullRequestWithGreenOrNoChecks(t *testing
 			require.Equal(t, model.StateDone, updated.State)
 		})
 	}
+}
+
+func TestDoneEntryAcceptsMergedPullRequestWithOnlyUnresolvedP2P3Threads(t *testing.T) {
+	ctx := context.Background()
+	verifier := &fakePullRequestVerifier{status: service.PullRequestStatus{
+		State:            service.PullRequestMerged,
+		Merged:           true,
+		CheckRollupState: service.CheckRollupSuccess,
+	}}
+	s := newWorkflowSvc(t, verifier)
+	task := newWorkflowTask(t, s)
+	attachPullRequest(t, s, task.ID)
+
+	done := model.StateDone
+	updated, err := s.UpdateTask(ctx, task.ID, store.TaskUpdate{State: &done})
+	require.NoError(t, err)
+	require.Equal(t, model.StateDone, updated.State)
 }
 
 func TestStateEntryVerificationFailureIsDistinctFromBlockedEvidence(t *testing.T) {
