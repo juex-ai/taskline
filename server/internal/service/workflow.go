@@ -42,10 +42,10 @@ type PullRequestRef struct {
 
 // PullRequestStatus contains only the external facts needed by workflow rules.
 type PullRequestStatus struct {
-	State                   string
-	Merged                  bool
-	UnresolvedReviewThreads int
-	CheckRollupState        string
+	State                       string
+	Merged                      bool
+	UnresolvedP0P1ReviewThreads int
+	CheckRollupState            string
 }
 
 // PullRequestVerifier keeps GitHub-specific API details outside the service.
@@ -158,8 +158,8 @@ func doneBlockers(status PullRequestStatus) []string {
 	if !status.Merged && !strings.EqualFold(status.State, PullRequestMerged) {
 		reasons = append(reasons, "has not been merged")
 	}
-	if status.UnresolvedReviewThreads > 0 {
-		reasons = append(reasons, fmt.Sprintf("has %d unresolved review threads", status.UnresolvedReviewThreads))
+	if status.UnresolvedP0P1ReviewThreads > 0 {
+		reasons = append(reasons, fmt.Sprintf("has %d unresolved P0/P1 review threads", status.UnresolvedP0P1ReviewThreads))
 	}
 	rollup := strings.ToUpper(strings.TrimSpace(status.CheckRollupState))
 	if rollup != "" && rollup != CheckRollupSuccess {
@@ -179,7 +179,7 @@ func blockedReviewError(taskID, reason string) error {
 
 func blockedDoneError(taskID, reason string) error {
 	return fmt.Errorf(
-		"%w: cannot enter done: %s; attach the PR if missing with taskline task link %s --url https://github.com/<owner>/<repo>/pull/<number> --label \"PR #<number>\"; resolve review comments, wait for CI, merge the PR, then retry taskline task update %s --state done",
+		"%w: cannot enter done: %s; attach the PR if missing with taskline task link %s --url https://github.com/<owner>/<repo>/pull/<number> --label \"PR #<number>\"; resolve P0/P1 review comments, wait for CI, merge the PR, then retry taskline task update %s --state done",
 		ErrStateEntryBlocked,
 		reason,
 		taskID,

@@ -73,20 +73,23 @@ task actually enters the target state.
 | Target | Server-enforced entry rule |
 | --- | --- |
 | `review` | At least one attached canonical GitHub PR URL resolves to an open or merged pull request. |
-| `done` | At least one attached PR is merged, has zero unresolved GitHub review threads, and has a successful check rollup or no check rollup. |
+| `done` | At least one attached PR is merged, has zero unresolved P0/P1 GitHub review threads, and has a successful check rollup or no check rollup. |
 
 A closed, unmerged PR does not qualify. If several PRs are attached, one
 qualifying PR is sufficient. The server does not currently prove that the PR
 implements the task, require an approval or any posted review, inspect ordinary
-PR or issue comments, or require every attached PR to qualify. Verification
-unavailability is distinct from missing evidence. `--force` can bypass claim
-ownership where supported, but never these evidence gates.
+PR or issue comments, require unresolved P2/P3 or unprioritized review threads
+to be resolved, or require every attached PR to qualify. An unresolved review
+thread blocks `done` only when a comment's first non-empty line marks it as P0
+or P1. Verification unavailability is distinct from missing evidence. `--force`
+can bypass claim ownership where supported, but never these evidence gates.
 
 The agent delivery policy is intentionally stricter: it requires a real push
 and PR, required CI plus a server-compatible aggregate check-rollup state for
 the latest head, inspection of every review/comment surface after CI completes,
-handling of blocking findings, resolution of every review thread, and a
-head-pinned merge before `done`. It does not require that a review be posted or
+handling of findings according to the current review-round policy, resolution
+of every P0/P1 review thread, and a head-pinned merge before `done`. It does not
+require that a review be posted or
 impose an additional time-based delay when no comments exist. The
 mechanical-change fast path may omit a dedicated Spec stage, but it does not
 omit those delivery gates. The exact CI-refresh, finding-priority, fast-path,

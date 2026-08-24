@@ -141,6 +141,12 @@ and credential lookup outside workflow policy and gives future state rules the
 same registry without expanding the handler. Missing evidence maps to 409;
 temporary verification/authentication failure maps to 503.
 
+For the `done` rule, the GitHub adapter counts only unresolved review threads
+whose comments carry a P0/P1 marker on their first non-empty line. The service
+receives that count as a transport-neutral fact; unresolved P2/P3 or
+unprioritized threads and ordinary top-level PR/issue comments do not block the
+server gate.
+
 ## Dependency DAG and the runnable query
 
 The normative DAG, runnable, and claimable rules live in

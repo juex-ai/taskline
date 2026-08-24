@@ -701,8 +701,9 @@ func TestStateTransitionAtAPI(t *testing.T) {
 
 func TestStateEntryEvidenceErrorsAtAPI(t *testing.T) {
 	verifier := &mutablePullRequestVerifier{status: service.PullRequestStatus{
-		State:            service.PullRequestOpen,
-		CheckRollupState: service.CheckRollupSuccess,
+		State:                       service.PullRequestOpen,
+		UnresolvedP0P1ReviewThreads: 1,
+		CheckRollupState:            service.CheckRollupSuccess,
 	}}
 	base, stop := startServerWithVerifier(t, verifier)
 	defer stop()
@@ -723,13 +724,20 @@ func TestStateEntryEvidenceErrorsAtAPI(t *testing.T) {
 	status, body = jsonReqError(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "done", "force": true})
 	require.Equal(t, http.StatusConflict, status)
 	require.Contains(t, body, "has not been merged")
-	require.Contains(t, body, "resolve review comments, wait for CI, merge the PR")
+	require.Contains(t, body, "1 unresolved P0/P1 review threads")
+	require.Contains(t, body, "resolve P0/P1 review comments, wait for CI, merge the PR")
 
 	verifier.status = service.PullRequestStatus{
-		State:            service.PullRequestMerged,
-		Merged:           true,
-		CheckRollupState: service.CheckRollupSuccess,
+		State:                       service.PullRequestMerged,
+		Merged:                      true,
+		UnresolvedP0P1ReviewThreads: 1,
+		CheckRollupState:            service.CheckRollupSuccess,
 	}
+	status, body = jsonReqError(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "done"})
+	require.Equal(t, http.StatusConflict, status)
+	require.Contains(t, body, "1 unresolved P0/P1 review threads")
+
+	verifier.status.UnresolvedP0P1ReviewThreads = 0
 	status = jsonReq(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "done"}, &tk)
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, "done", tk.State)
